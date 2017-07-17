@@ -3,14 +3,9 @@ import scipy
 import matplotlib.pyplot as plt
 from scipy.cluster.vq import vq,kmeans,whiten,kmeans2
 from sklearn import cluster as skcluster
-import sys,os
-import matplotlib.cm as cmx
-import matplotlib.colors as colors
-from bisect import bisect_left
-from heapq import nsmallest
+import sys, os, fnmatch
 from decimal import *
 from joblib import Parallel, delayed
-from sklearn.neighbors import NearestNeighbors
 from KNearestNeighbours import *
 from KMeans import KMeans
 import matplotlib
@@ -18,6 +13,17 @@ import seaborn as sns
 import pandas as pd
 from function_utils import savitzky_golay
 from astropy.coordinates import SkyCoord
+from scipy.spatial.distance import cdist, pdist
+
+def find_files(directory, pattern='*..dbase.drfi.clean.exp_time', sortby="auto"):
+    '''Recursively finds all files matching the pattern.'''
+    files = []
+    for root, dirnames, filenames in os.walk(directory):
+        for filename in fnmatch.filter(filenames, pattern):
+            files.append(os.path.join(root, filename))
+
+    files = np.sort(files)
+    return files
 def get_cmap(N):
         '''Returns a function that maps each index in 0, 1, ... N-1 to a distinct 
         RGB color.'''
@@ -26,33 +32,6 @@ def get_cmap(N):
         def map_index_to_rgb_color(index):
             return scalar_map.to_rgba(index)
         return map_index_to_rgb_color
-
-def tC(myList, myNumber):
-        """
-        Assumes myList is sorted. Returns closest value to myNumber.
-
-        If two numbers are equally close, return the smallest number.
-        """
-        #print myList.tolist().index(myNumber)
-        myList = np.delete(myList,myList.tolist().index(myNumber))
-        pos = bisect_left(myList, myNumber)
-        if pos == 0:
-            return myList[0]
-        if pos == len(myList):
-            return myList[-1]
-        before = myList[pos - 1]
-        after = myList[pos]
-        return min(after-myNumber,myNumber-before)
-
-        '''
-        if after - myNumber < myNumber - before:
-            return after
-        else:
-            return before
-        '''
-
-
-from scipy.spatial.distance import cdist, pdist
 
 def _skelbow(Xd, k):
     kmeansvar = skcluster.KMeans(n_clusters=k, max_iter=1000).fit(Xd)
@@ -71,21 +50,18 @@ def elbow(Xd, max_clusters):
         ncluster += 1
         if ncluster == max_clusters:
             break
-    return ncluster, elbow_results[ncluster-1][1]
+    return elbow_results[ncluster-1][1]
     #plt.plot(bss)
     #plt.show()
 
 if __name__ == "__main__":
 
-        data_dir = '/data1/SETI/SERENDIP/vishal/'
-        #data_dir = '/home/yunfanz/Projects/SETI/serendip/Data/'
-        fname = "20170604_172322.dbase.drfi.clean.exp_time"
-        infile = data_dir + fname
-        #infile = data_dir + "20170325_092539.dbase.drfi.clean.exp_time"
-        #infile = data_dir + "20170604_172322.dbase.drfi.clean.exp_time"
-        #infile = sys.argv[1]
-        #data1 = np.loadtxt(infile,dtype={'names': ('freq','time','ra','dec','pow'),'formats':('f16','f8','f8','f8','f8')})
-        #plt.scatter(data1['freq'],data1['time'],marker='.',s=0.3)
+    data_dir = '/data1/SETI/SERENDIP/vishal/'
+    files = find_files(data_dir)
+    for infile in files:
+        file_dir = os.path.dirname(infile)
+        fname = infile.split('/')[-1].split('.')[0] #e.g. "20170604_172322"
+
         data1 = np.loadtxt(infile)
         data1 = pd.DataFrame(data=data1, columns=['freq','time','ra','dec','pow'])
         #plt.scatter(data1['freq'],data1['time'],marker='.',s=0.3)
@@ -95,36 +71,9 @@ if __name__ == "__main__":
         print min(sortfreq),max(sortfreq)
         X = whiten(zip(data1['freq'], data1['time']))
         allindices, alldists, meandists, klist = KNN(X, 8, srcDims=2)
-        #import IPython; IPython.embed()
+
         binmax  = np.amax(meandists)/4
         counts, bins = np.histogram(meandists, range=(0, binmax), bins=100)
-        # while True:
-        #     counts, bins = np.histogram(meandists, range=(0, binmax), bins=100)
-        #     import IPython; IPython.embed()
-        #     if counts[1] > 0.5*counts[0]:
-        #         break
-        #     print binmax, np.float(counts[1])/counts[0]
-        #     binmax /= 2
-        #counts = savitzky_golay(counts, 7, 3)
-        # plt.plot(count)
-        # counts = scipy.convolve(counts, np.ones(5, dtype=float)/5)
-        # trend = np.array(counts[2:]).astype(np.float)/np.array(counts[:-2])
-        # trend_smooth = trend# savitzky_golay(trend, 7, 3)
-        # for i in xrange(trend.size-1):
-        #     if trend_smooth[i] > 1:
-        #         continue #to get over the hump, if any
-        #     if (counts[i] < np.amax(counts)*0.2) and (trend_smooth[i]*1.5 > 1):
-        #         ind = i
-        #         break
-        
-        # #cutoff = bins[5]
-        # print ind+1, cutoff
-        # plt.subplot(211)
-        # plt.plot(counts)
-        # plt.subplot(212)
-        # plt.plot(trend)
-        # plt.plot(trend_smooth)
-        # plt.show()
 
         cutoff = bins[50]
         flags_ = np.argwhere(meandists>cutoff).squeeze()
@@ -133,24 +82,17 @@ if __name__ == "__main__":
         
         plt.scatter(data1['freq'][flags_],data1['time'][flags_],color='r',marker='.',s=2)
         plt.scatter(data1['freq'][flags],data1['time'][flags],color='b',marker='.',s=2)
-        plt.show()
+        plt.savefig(file_dir+fname+'.png')
 
-        #import IPython; IPython.embed()
+
         data_dense = data1.loc[flags]
-        data_dense.to_csv(data_dir+fname.split('.')[0]+".flagged")
-        #Xd = whiten(zip(data_dense['freq'], data_dense['time']))
+        #data_dense.to_csv(data_dir+fname.split('.')[0]+".flagged")
+
         Xd = data_dense['freq']
-        #code_book, finalSols, results = KMeans(Xd[:,np.newaxis], 20, srcDims=100, epsilon=0.0000001, iters=100, normData=True)
-        #code_book,dist = kmeans(Xd,20,iter=100, n_jobs=12)
-        #code, dist = vq(Xd,code_book.squeeze())
+
         max_clusters = 40
-        ncluster, kmeans_ = elbow(Xd[:,np.newaxis], max_clusters)
+        kmeans_ = elbow(Xd[:,np.newaxis], max_clusters)
 
-
-        #import IPython; IPython.embed()
-        # kmeans_ = skcluster.KMeans(n_clusters=ncluster, 
-        #                          n_jobs=4, 
-        #                          max_iter=1000).fit(Xd[:,np.newaxis])
         data_dense['cluster'] = kmeans_.labels_
         print "generating pairplot"
         g = sns.pairplot(data_dense, hue='cluster', vars=['freq','time','ra','dec'],
