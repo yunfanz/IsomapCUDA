@@ -61,11 +61,7 @@ def _skelbow(Xd, k):
     return wcss
 
 def elbow(Xd, n):
-    kMeansVar = Parallel(n_jobs=4)(delayed(_skelbow)(Xd, k) for k in range(1, n))
-    centroids = [X.cluster_centers_ for X in kMeansVar]
-    k_euclid = [cdist(Xd, cent) for cent in centroids]
-    dist = [np.min(ke, axis=1) for ke in k_euclid]
-    wcss = [sum(d**2) for d in dist]
+    wcss = Parallel(n_jobs=4)(delayed(_skelbow)(Xd, k) for k in range(1, n))
     tss = sum(pdist(Xd)**2)/Xd.shape[0]
     bss = tss - wcss
     return bss
@@ -74,8 +70,10 @@ def elbow(Xd, n):
 
 if __name__ == "__main__":
 
-        data_dir = '/data1/SETI/SERENDIP/vishal/'
-        infile = data_dir + "20170101_142601.dbase.drfi.clean.exp_time"
+        #data_dir = '/data1/SETI/SERENDIP/vishal/'
+        data_dir = '/home/yunfanz/Projects/SETI/serendip/Data/'
+        fname = "20170604_172322.dbase.drfi.clean.exp_time"
+        infile = data_dir + fname
         #infile = data_dir + "20170325_092539.dbase.drfi.clean.exp_time"
         #infile = data_dir + "20170604_172322.dbase.drfi.clean.exp_time"
         #infile = sys.argv[1]
@@ -101,36 +99,38 @@ if __name__ == "__main__":
         #     print binmax, np.float(counts[1])/counts[0]
         #     binmax /= 2
         #counts = savitzky_golay(counts, 7, 3)
-        counts = scipy.convolve(counts, np.ones(5, dtype=float)/5)
-        trend = np.array(counts[2:]).astype(np.float)/np.array(counts[:-2])
-        trend_smooth = trend# savitzky_golay(trend, 7, 3)
-        for i in xrange(trend.size-1):
-            if trend_smooth[i] > 1:
-                continue #to get over the hump, if any
-            if (counts[i] < np.amax(counts)*0.2) and (trend_smooth[i]*1.5 > 1):
-                ind = i
-                break
-        cutoff = bins[ind+2]
-        #cutoff = bins[5]
-        print ind+1, cutoff
-        plt.subplot(211)
-        plt.plot(counts)
-        plt.subplot(212)
-        plt.plot(trend)
-        plt.plot(trend_smooth)
-        plt.show()
+        # plt.plot(count)
+        # counts = scipy.convolve(counts, np.ones(5, dtype=float)/5)
+        # trend = np.array(counts[2:]).astype(np.float)/np.array(counts[:-2])
+        # trend_smooth = trend# savitzky_golay(trend, 7, 3)
+        # for i in xrange(trend.size-1):
+        #     if trend_smooth[i] > 1:
+        #         continue #to get over the hump, if any
+        #     if (counts[i] < np.amax(counts)*0.2) and (trend_smooth[i]*1.5 > 1):
+        #         ind = i
+        #         break
+        
+        # #cutoff = bins[5]
+        # print ind+1, cutoff
+        # plt.subplot(211)
+        # plt.plot(counts)
+        # plt.subplot(212)
+        # plt.plot(trend)
+        # plt.plot(trend_smooth)
+        # plt.show()
 
-
+        cutoff = bins[50]
         flags_ = np.argwhere(meandists>cutoff).squeeze()
         flags = np.argwhere(meandists<=cutoff).squeeze()
 
         
-        plt.scatter(data1['freq'][flags_],data1['time'][flags_],color='r',marker='.',s=0.3)
-        plt.scatter(data1['freq'][flags],data1['time'][flags],color='b',marker='.',s=0.3)
+        plt.scatter(data1['freq'][flags_],data1['time'][flags_],color='r',marker='.',s=2)
+        plt.scatter(data1['freq'][flags],data1['time'][flags],color='b',marker='.',s=2)
         plt.show()
 
         import IPython; IPython.embed()
         data_dense = data1.loc[flags]
+        data_dense.to_csv(data_dir+fname.split('.')[0]+".flagged")
         #Xd = whiten(zip(data_dense['freq'], data_dense['time']))
         Xd = data_dense['freq']
         #code_book, finalSols, results = KMeans(Xd[:,np.newaxis], 20, srcDims=100, epsilon=0.0000001, iters=100, normData=True)
