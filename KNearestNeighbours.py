@@ -74,7 +74,7 @@ def KNNConfig(dataTable,srcDims, k, eps = 1000000000.,gpuMemSize = 512, settings
     
     return settings
 
-def KNN(dataTable, k, epsilon=10000000000000., srcDims = 1000000000000000, normData = False):
+def KNN(dataTable, k, epsilon=10000000000000., srcDims=1000000000000000, normData=False, excess=False):
     """
     Get a k,epsilon version k nearest neighbours
     """
@@ -152,29 +152,36 @@ def KNN(dataTable, k, epsilon=10000000000000., srcDims = 1000000000000000, normD
     #organise data and add neighbours
     alldists = numpy.concatenate(dists).reshape((-1,knnOptions['k']))[:(knnOptions['dataSize']),:knnOptions['oldk']].tolist()
     allindices = numpy.concatenate(indices).reshape((-1,knnOptions['k']))[:(knnOptions['dataSize']),:knnOptions['oldk']].tolist()
-    for i in xrange(len(alldists)): #remove excess entries
-        if knnOptions['eps'] in alldists[i]:
-            ind = alldists[i].index(knnOptions['eps'])
-            alldists[i] = alldists[i][:ind]
-            allindices[i] = allindices[i][:ind]
-            ind = allindices[i].index(i)
-            alldists[i] = alldists[i][:ind]
-            allindices[i] = allindices[i][:ind]
-    for i in xrange(len(alldists)):
-            j = 0
-            for ind in allindices[i]: #add mirrored entries
-                if not (i in allindices[ind]):
-                    allindices[ind].append(i)
-                    alldists[ind].append(alldists[i][j])
-                j += 1
+    # for i in xrange(len(alldists)): #remove excess entries
+    #     if knnOptions['eps'] in alldists[i]:
+    #         ind = alldists[i].index(knnOptions['eps'])
+    #         alldists[i] = alldists[i][:ind]
+    #         allindices[i] = allindices[i][:ind]
+    #         ind = allindices[i].index(i)
+    #         alldists[i] = alldists[i][:ind]
+    #         allindices[i] = allindices[i][:ind]
+    # for i in xrange(len(alldists)):
+    #         j = 0
+    #         for ind in allindices[i]: #add mirrored entries
+    #             if not (i in allindices[ind]):
+    #                 allindices[ind].append(i)
+    #                 alldists[ind].append(alldists[i][j])
+    #             j += 1
     
     #have a list for start and end indices for knn
+    #import IPython
     klist = [0]
-    for i in xrange(len(alldists)): #pad all entries to the same length for the next algorithm
-        klist.append(len(alldists[i])+klist[-1])
-    alldists = array([j for i in alldists for j in i],dtype=numpy.float32)
-    allindices = array([j for i in allindices for j in i],dtype=numpy.uint32)
-    klist = array(klist,dtype=numpy.uint32)
+    meandists = []
+    if excess:
+        for i in xrange(len(alldists)): #pad all entries to the same length for the next algorithm
+            klist.append(len(alldists[i])+klist[-1])
+        alldists = array([j for i in alldists for j in i],dtype=numpy.float32)
+        allindices = array([j for i in allindices for j in i],dtype=numpy.uint32)
+        klist = array(klist,dtype=numpy.uint32)
+    else:
+        klist = numpy.array([len(row) for row in alldists])
+        meandists = numpy.array([numpy.mean(row) for row in alldists])
+
     
     print time.time()-t0, " seconds to process KNN"
     """
@@ -190,7 +197,7 @@ def KNN(dataTable, k, epsilon=10000000000000., srcDims = 1000000000000000, normD
     f.close()
     """
 
-    return allindices, alldists, klist #[allindices[i]+alldists[i] for i in xrange(len(alldists))]
+    return allindices, alldists, meandists, klist #[allindices[i]+alldists[i] for i in xrange(len(alldists))]
 
 
 

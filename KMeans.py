@@ -178,7 +178,7 @@ def KMeans(dataTable, k, epsilon=0.00001, srcDims = 1000000000000000, iters=20, 
         results.append((total,len(results)))
         finalSols.append(numpy.concatenate(sol)[:kmOptions['dataSize']])
     results.sort()
-    return finalSols[results[0][1]]
+    return finalSols[results[0][1]], finalSols, results
 
 
 
