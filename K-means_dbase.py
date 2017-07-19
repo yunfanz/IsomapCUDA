@@ -18,6 +18,7 @@ import seaborn as sns
 import pandas as pd
 from function_utils import savitzky_golay
 from astropy.coordinates import SkyCoord
+from skimage.measure import label, regionprops
 def get_cmap(N):
         '''Returns a function that maps each index in 0, 1, ... N-1 to a distinct 
         RGB color.'''
@@ -87,11 +88,69 @@ def elbow(Xd, max_clusters, slope):
     return ncluster
     #plt.plot(bss)
     #plt.show()
+def injectET(data1, freq_start, time_start):
+        """
+        The input is exp_time file read using python. The array should have five corresponding attributes
+        freq,time,ra,dec,pow
+        """
+        # Find most common RA and DEC
+        # There are two ways to do this. i
+        # First is to find most frequently occuring pairs  
+
+        #RA = data1['ra']
+        #DEC = data1['dec']
+
+        #d = zip(RA,DEC)
+    
+        # Find most common pairs of RA and DEC 
+        #RAmax,DECmax = Counter(d).most_common(1)[0][0] 
+        
+        #(v1,c1) = np.unique(RA,return_counts=True)
+        #(v2,c2) = np.unique(DEC,return_counts=True)
+        
+        #Extract the data for this block
+        #ETdata = data1[((data1['dec']==DECmax) & (data1['ra']==RAmax))]
+        # ^ not what we want eventually so drop
+
+        # What we need is the pairs of RA and DEC which lasted longest. 
+        # By looking at the data manully, I determind following ET location to inject birdie. 
+
+        
+        ETtime_start = time_start 
+        ETtime_end = time_start + 50
+        if False:
+            ETdec = 16.9
+            ETra =  19.1 
+        else:
+            #import IPython; IPython.embed()
+            start_exind = np.random.choice(np.where(np.abs(data1[:,1]-ETtime_start)<1)[0])
+            #end_exind = np.random.choice(np.where(np.abs(data1[:,0]-ETtime_end)<0.1)[0])
+            ETdec = data1[start_exind][3]
+            ETra = data1[start_exind][2]
+        ETfreq_start = freq_start
+        ETfreq_end = freq_start + 0.001
+        ETpow = 15 # This is in log scale. 
+
+        #From above values, calculate slope 
+        ETslope = (ETfreq_end - ETfreq_start)/(ETtime_end - ETtime_start)
+        
+        #Fixed, this will overide ETfreq_end frequencies. The value must be in MHz/sec
+        ETslope = 0.0001
+        
+        ETtime = ETtime_end - ETtime_start
+
+        ETdata = np.zeros((ETtime,5))
+
+        for i in range(ETtime):
+            ETdata[i,:] = (ETfreq_start+(i)*ETslope,ETtime_start+i,ETra,ETdec,ETpow)    
+
+        data2 = np.concatenate((data1,ETdata),axis=0)
+        return data2
 
 if __name__ == "__main__":
 
-    data_dir = '/data1/SETI/SERENDIP/vishal/'
-    #data_dir = '/home/yunfanz/Projects/SETI/serendip/Data/'
+    #data_dir = '/data1/SETI/SERENDIP/vishal/'
+    data_dir = '/home/yunfanz/Projects/SETI/serendip/Data/'
     fname = "20170325_092539.dbase.drfi.clean.exp_time"
     infile = data_dir + fname
     #infile = data_dir + "20170325_092539.dbase.drfi.clean.exp_time"
@@ -100,6 +159,7 @@ if __name__ == "__main__":
     #data1 = np.loadtxt(infile,dtype={'names': ('freq','time','ra','dec','pow'),'formats':('f16','f8','f8','f8','f8')})
     #plt.scatter(data1['freq'],data1['time'],marker='.',s=0.3)
     data1 = np.loadtxt(infile)
+    data1 = injectET(data1, 1352, 500)
     data1 = pd.DataFrame(data=data1, columns=['freq','time','ra','dec','pow'])
     #plt.scatter(data1['freq'],data1['time'],marker='.',s=0.3)
     #plt.show()
@@ -111,14 +171,14 @@ if __name__ == "__main__":
     allindices, alldists, meandists, klist = KNN(X, 8, srcDims=2)
     binmax  = np.amax(meandists)/2
     counts, bins = np.histogram(meandists, range=(0, binmax), bins=100)
-    cutoff = bins[30]
+    cutoff = bins[10]
     water_flags = meandists<cutoff
     #import IPython; IPython.embed()
 
     allindices, alldists, meandists, klist = KNN(X, 8, srcDims=1)
-    binmax  = np.amax(meandists)/4
+    binmax  = np.amax(meandists)/8
     counts, bins = np.histogram(meandists, range=(0, binmax), bins=100)
-    cutoff = bins[10]
+    cutoff = bins[1]
     freq_flags = meandists<cutoff
 
     # allindices, alldists, meandists, klist = KNN(X[:,::-1], 8, srcDims=1)
@@ -151,22 +211,36 @@ if __name__ == "__main__":
     data1['cluster'] = 0
     data1['remove'] = 0
     # data1.loc[broadband_flags]['remove'] = 1
-    data_dense = data1.loc[flags]
+    
     #data_dense.to_csv(data_dir+fname.split('.')[0]+".flagged")
     #Xd = whiten(zip(data_dense['freq'], data_dense['time']))
-    Xd = data_dense['freq']
-    max_clusters = 40
-    #tss = sum(pdist(Xd)**2)/Xd.shape[0]
-    ncluster = elbow(Xd[:,np.newaxis], max_clusters, 0.85)
-    #import IPython; IPython.embed()
-    kmeans_ = skcluster.KMeans(n_clusters=ncluster, max_iter=1000).fit(Xd[:,np.newaxis])
-    data_dense['cluster'] = kmeans_.labels_ + 1
-    #data1.set_value('cluster', np.where(flags)[0], kmeans_.labels_)
-    data1.loc[flags, 'cluster'] = kmeans_.labels_ + 1
+    Xd = data1.loc[flags, 'freq']
+
+    if False:
+        max_clusters = 40
+        #tss = sum(pdist(Xd)**2)/Xd.shape[0]
+        ncluster = elbow(Xd[:,np.newaxis], max_clusters, 0.90)
+        #import IPython; IPython.embed()
+        kmeans_ = skcluster.KMeans(n_clusters=ncluster, max_iter=1000).fit(Xd[:,np.newaxis])
+        data_dense['cluster'] = kmeans_.labels_ + 1
+        #data1.set_value('cluster', np.where(flags)[0], kmeans_.labels_)
+        data1.loc[flags, 'cluster'] = kmeans_.labels_ + 1
+    else:
+        nbins = 100
+        counts, bin_edges = np.histogram(Xd, bins=nbins)
+        cluster_labels = label(counts>10)
+        for i in xrange(nbins):
+            if cluster_labels[i] > 0:
+                cur_bin = (data1['freq']>= bin_edges[i]) & (data1['freq'] < bin_edges[i+1])
+                data1.loc[cur_bin, 'cluster'] = cluster_labels[i]
+        ncluster = np.amax(cluster_labels)
+        #import IPython; IPython.embed()
+
     
 
     print "generating pairplot"
     #plt.figure()
+    data_dense = data1.loc[flags]
     g = sns.pairplot(data_dense, hue='cluster', vars=['freq','time','ra','dec'],
         plot_kws={"s":10})
     for i, j in zip(*np.triu_indices_from(g.axes, 1)):
@@ -181,7 +255,7 @@ if __name__ == "__main__":
         print i, maxsep
         if maxsep > 16.:
             data1.loc[data1['cluster'] == i, 'remove'] = 1
-        elif np.amax(cluster['freq'])-np.amin(cluster['freq']) > 2:
+        elif np.amax(cluster['freq'])-np.amin(cluster['freq']) > 1:
             data1.loc[data1['cluster'] == i, 'remove'] = 2
         else:
             print 'Candidate cluster {}'.format(i)
@@ -190,10 +264,12 @@ if __name__ == "__main__":
 
     data_candidate = data1.loc[(data1['remove'] == 0) & (data1['cluster']>0)]
     data_clean = data1.loc[data1['cluster']==0]
+    data_broad = data1.loc[data1['remove']==2]
 
     plt.figure()
     plt.scatter(data_clean['freq'],data_clean['time'],color='r',marker='.',s=2)
     plt.scatter(data_candidate['freq'],data_candidate['time'],color='g',marker='.',s=2)
+    plt.scatter(data_broad['freq'],data_broad['time'],color='b',marker='.',s=2)
     plt.show()
 
 
