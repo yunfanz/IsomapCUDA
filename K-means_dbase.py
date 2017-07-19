@@ -61,21 +61,21 @@ def _skelbow(Xd, k):
     wcss = sum(dist**2)
     return wcss
 
-def derivative(arr):
-    return arr[1:]-arr[:-1]
-def sec_derivative(arr):
-    return arr[:-2]+arr[2:]-2*arr[1:-1]
-def curvature(arr):
-    yp = derivative(arr)[:-1]
-    ypp = sec_derivative(arr)
-    return np.abs(ypp)/(1+yp**2)**1.5
+# def derivative(arr):
+#     return arr[1:]-arr[:-1]
+# def sec_derivative(arr):
+#     return arr[:-2]+arr[2:]-2*arr[1:-1]
+# def curvature(arr):
+#     yp = derivative(arr)[:-1]
+#     ypp = sec_derivative(arr)
+#     return np.abs(ypp)/(1+yp**2)**1.5
 
 def elbow(Xd, max_clusters, slope):
     wcss = Parallel(n_jobs=4)(delayed(_skelbow)(Xd, k) for k in range(1, max_clusters))
     bss = np.array(wcss)
     #bss = np.array(tss) - wcss
-    plt.figure()
-    plt.plot(bss)
+    # plt.figure()
+    # plt.plot(bss)
     # plt.show()
     #ncluster = 1
     #import IPython; IPython.embed()
@@ -90,9 +90,9 @@ def elbow(Xd, max_clusters, slope):
 
 if __name__ == "__main__":
 
-    #data_dir = '/data1/SETI/SERENDIP/vishal/'
-    data_dir = '/home/yunfanz/Projects/SETI/serendip/Data/'
-    fname = "20170604_172322.dbase.drfi.clean.exp_time"
+    data_dir = '/data1/SETI/SERENDIP/vishal/'
+    #data_dir = '/home/yunfanz/Projects/SETI/serendip/Data/'
+    fname = "20170325_092539.dbase.drfi.clean.exp_time"
     infile = data_dir + fname
     #infile = data_dir + "20170325_092539.dbase.drfi.clean.exp_time"
     #infile = data_dir + "20170604_172322.dbase.drfi.clean.exp_time"
@@ -173,10 +173,10 @@ if __name__ == "__main__":
         g.axes[i, j].set_visible(False)
     
     #import IPython; IPython.embed()
-    for i in xrange(1, ncluster):
+    for i in xrange(1, ncluster+1):
         cluster = data1.loc[data1['cluster'] == i]
         loc = SkyCoord(cluster['ra'],cluster['dec'],unit='deg',frame='icrs')
-        sep = loc[0].separation(loc[:]) 
+        sep = loc[0].separation(loc[:])
         maxsep = np.amax(sep.deg)
         print i, maxsep
         if maxsep > 16.:
@@ -199,51 +199,4 @@ if __name__ == "__main__":
 
     import IPython; IPython.embed()
 
-    #nbrs = NearestNeighbors(n_neighbors=5, algorithm='ball_tree').fit(X)
 
-
-    #print len(sortfreq),len(data1['freq'])
-    #sys.exit(0)
-    #sortfreq = list(set(data1['freq']))
-    #sortfreq = np.sort(sortfreq)
-    #sorttime = np.sort(data1['time'])
-    #cfreq = np.zeros(len(data1['freq']))
-    #ctime = np.zeros(len(data1['time']))
-
-    #print "Doing sorting and getting nearest hits"
-    #cfreq = Parallel(n_jobs=12)(delayed(tC)(sortfreq, d) for d in data1['freq'])
-    #ctime = Parallel(n_jobs=12)(delayed(tC)(sorttime, d) for d in data1['time'])
-    
-    # for i,d in enumerate(data1['freq']):
-    #     #print i
-    #     cfreq[i] = tC(sortfreq,d)
-    #     ctime[i] = tC(sorttime,data1['time'][i])*(10E-7)
-    #     #print cfreq[i],ctime[i]
-    #     #print close[i]
-    #     #close[i] = np.sort(nsmallest(2, data1['freq'], key=lambda x: abs(x-float(i))))[1]
-    #print ctime,min(cfreq)
-    #sys.exit(0)
-    #print close
-    #water = zip(data1['freq'],data1['time'],data1['ra'],data1['dec'],data1['pow'],close)
-    #water = zip(data1['ra'],data1['dec'],close)
-    #water = zip(cfreq,ctime)
-    # water1 = np.array(cfreq)
-    # #water2 = np.array(data1['pow'])
-    # water2 = np.array(ctime)*(10E-7)
-    # w1 = whiten(zip(water1,water2)) #divide by std for each axis
-    # import IPython; IPython.embed()
-
-    # ncluster = 20
-    # clusterdiff = 15
-    # kw1,dist = kmeans(w1,ncluster,iter=1000)
-    # idx2,test = vq(w1,kw1)
-    # #print idx2
-    # plt.xlim(1235,1515)
-    # plt.ylim(0,1100)
-    # for i in range(1,clusterdiff):
-    #     plt.scatter(data1['freq'][idx2==i],data1['time'][idx2==i],color='r',marker='.',s=0.3)
-    # #plt.scatter(data1['freq'][idx2==2],data1['time'][idx2==2],color='r',marker='.',s=0.3)
-    # for i in range(clusterdiff,ncluster+1):
-    #     plt.scatter(data1['freq'][idx2==i],data1['time'][idx2==i],color='blue',marker='.',s=0.3)
-    
-    # plt.show()
