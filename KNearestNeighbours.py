@@ -17,12 +17,10 @@ import time
 from numpy import array,zeros,amax,amin,sqrt,dot,random
 import numpy
 from numpy.linalg import eig
-import pycuda.autoinit
+#import pycuda.autoinit
 import pycuda.driver as drv
 from pycuda.compiler import SourceModule
 import math
-
-
 from DataUtils import dataConfig,loadTable,loadSplitTable,loadMatrix,loadIntMatrix,saveTable
 
 KernelLocation = "CudaKernels/KNN/"
@@ -78,6 +76,9 @@ def KNN(dataTable, k, epsilon=10000000000000., srcDims=1000000000000000, normDat
     """
     Get a k,epsilon version k nearest neighbours
     """
+
+    #drv.init()
+
     #load up the configuration
     knnOptions = KNNConfig(dataTable,srcDims,k,epsilon)
     

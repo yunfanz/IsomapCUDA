@@ -151,9 +151,9 @@ def injectET(data1, freq_start, time_start):
 
 if __name__ == "__main__":
 
-    #data_dir = '/data1/SETI/SERENDIP/vishal/'
-    data_dir = '/home/yunfanz/Projects/SETI/serendip/Data/'
-    fname = "20170604_172322.dbase.drfi.clean.exp_time"
+    data_dir = '/data1/SETI/SERENDIP/vishal/'
+    #data_dir = '/home/yunfanz/Projects/SETI/serendip/Data/'
+    fname = "20170325_092539.dbase.drfi.clean.exp_time"
     infile = data_dir + fname
     #infile = data_dir + "20170325_092539.dbase.drfi.clean.exp_time"
     #infile = data_dir + "20170604_172322.dbase.drfi.clean.exp_time"
@@ -161,7 +161,7 @@ if __name__ == "__main__":
     #data1 = np.loadtxt(infile,dtype={'names': ('freq','time','ra','dec','pow'),'formats':('f16','f8','f8','f8','f8')})
     #plt.scatter(data1['freq'],data1['time'],marker='.',s=0.3)
     data1 = np.loadtxt(infile)
-    data1 = injectET(data1, 1352, 500)
+    data1 = injectET(data1, 1322, 500)
     data1 = pd.DataFrame(data=data1, columns=['freq','time','ra','dec','pow'])
     #plt.scatter(data1['freq'],data1['time'],marker='.',s=0.3)
     #plt.show()
@@ -173,14 +173,14 @@ if __name__ == "__main__":
     allindices, alldists, meandists, klist = KNN(X, 8, srcDims=2)
     binmax  = np.amax(meandists)/2
     counts, bins = np.histogram(meandists, range=(0, binmax), bins=100)
-    cutoff = bins[20]
+    cutoff = bins[30]
     water_flags = meandists<cutoff
     #import IPython; IPython.embed()
 
     allindices, alldists, meandists, klist = KNN(X, 8, srcDims=1)
     binmax  = np.amax(meandists)/8
     counts, bins = np.histogram(meandists, range=(0, binmax), bins=100)
-    cutoff = bins[5]
+    cutoff = bins[0]
     freq_flags = meandists<cutoff
 
     # allindices, alldists, meandists, klist = KNN(X[:,::-1], 8, srcDims=1)

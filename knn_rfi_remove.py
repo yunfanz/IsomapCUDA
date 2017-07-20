@@ -4,17 +4,15 @@ import matplotlib.pyplot as plt
 from scipy.cluster.vq import vq,kmeans,whiten,kmeans2
 from sklearn import cluster as skcluster
 import sys, os, fnmatch
-from decimal import *
-from joblib import Parallel, delayed
 from KNearestNeighbours import *
-from KMeans import KMeans
 import matplotlib
 import seaborn as sns
 import pandas as pd
-from function_utils import savitzky_golay
 from astropy.coordinates import SkyCoord
-from scipy.spatial.distance import cdist, pdist
 from skimage.measure import label, regionprops
+import threading, Queue
+from pycuda import driver
+
 def find_files(directory, pattern='*.dbase.drfi.clean.exp_time', sortby="auto"):
     '''Recursively finds all files matching the pattern.'''
     files = []
@@ -145,61 +143,129 @@ def make_plots(data, flags, flags_, figname):
 
 
 
+def process(queue, hist_bin_cut=30, nbins=200, maxsep=16, maxwidth=1):
+
+    file_dir = os.path.dirname(infile)
+    fname = infile.split('/')[-1].split('.')[0] #e.g. "20170604_172322"
+    print "########## "+ fname+" ###########"
+
+    data1 = np.loadtxt(infile)
+    if True:
+        data1 = injectET(data1, 1352, 500)
+    data1 = pd.DataFrame(data=data1, columns=['freq','time','ra','dec','pow'])
+    X = whiten(zip(data1['freq'], data1['time']))
+
+    flags_bool = get_flags(X, hist_bin_cut, 5, twoD_only=True) 
+    flags = np.where(flags_bool)[0]
+    flags_ = np.where(~flags_bool)[0]
+
+
+    data1['cluster'] = 0
+    data1['remove'] = 0
+
+    data_dense = data1.loc[flags]
+    Xd = data_dense['freq']
+
+
+    nbins = 200
+    counts, bin_edges = np.histogram(Xd, bins=nbins)
+    cluster_labels = label(counts>0)
+    for i in xrange(nbins):
+        if cluster_labels[i] > 0:
+            cur_bin = (data1['freq'] >= bin_edges[i]) & (data1['freq'] < bin_edges[i+1])
+            data1.loc[cur_bin & flags_bool, 'cluster'] = cluster_labels[i]
+    ncluster = np.amax(cluster_labels)
+    
+
+    for i in xrange(1, ncluster+1):
+        cluster = data1.loc[data1['cluster'] == i]
+        loc = SkyCoord(cluster['ra'],cluster['dec'],unit='deg',frame='icrs')
+        sep = loc[0].separation(loc[:])
+        clustersep = np.amax(sep.deg)
+        print i, clustersep
+        if clustersep > 16.:
+            data1.loc[data1['cluster'] == i, 'remove'] = 1
+        elif np.amax(cluster['freq'])-np.amin(cluster['freq']) > 1:
+            data1.loc[data1['cluster'] == i, 'remove'] = 2
+        else:
+            print 'Candidate cluster {}'.format(i)
+
+
+    data_candidate = data1.loc[(data1['remove'] == 0) & (data1['cluster']>0)]
+    data_clean = data1.loc[data1['cluster']==0]
+    data1.to_csv(data_dir+fname.split('.')[0]+".knn")
+    figname = file_dir+'/'+fname+".knn.png"
+    #import IPython; IPython.embed()
+    make_plots(data1, flags, flags_, figname)
+
+def process_queue(queue, hist_bin_cut=30, nbins=200, maxsep=16, maxwidth=1):
+    while not exitFlag:
+        queueLock.acquire()
+        if not workQueue.empty():
+            infile = queue.get()
+            queueLock.release()
+            process(infile, hist_bin_cut=hist_bin_cut,
+                            nbins=nbins,
+                            maxsep=maxsep,
+                            maxwidth=maxwidth)
+        else:
+            queueLock.release()
+
+
+class KNN_RFI_remover(threading.Thread):
+    def __init__(self, gpuid, queue, hist_bin_cut=30,nbins=200, maxsep=16, maxwidth=1):
+        threading.Thread.__init__(self)
+        #self.ctx  = driver.Device(gpuid).make_context()
+        #self.device = self.ctx.get_device()
+        self.device = driver.Device(gpuid)
+        self.ctx = self.device.make_context()
+        self.queue = queue
+        self.cut = hist_bin_cut
+        self.nbins = nbins
+        self.maxsep = maxsep
+        self.maxwidth = maxwidth
+
+    def run(self):
+        process_queue(self.queue, self.cut, self.nbins, self.maxsep, self.maxwidth)
+
+    def join(self):
+        self.ctx.detach()
+        del self.ctx
+        threading.Thread.join(self)
+
 if __name__ == "__main__":
 
     data_dir = '/data1/SETI/SERENDIP/vishal/'
-    data_dir = '/home/yunfanz/Projects/SETI/serendip/Data/'
+    #data_dir = '/home/yunfanz/Projects/SETI/serendip/Data/'
+    if len(sys.argv) > 1:
+        data_dir = sys.argv[1]
+    print "Process files in " + data_dir
     files = find_files(data_dir, pattern='*.dbase.drfi.clean.exp_time')
+
+    queueLock = threading.Lock()
+    workQueue = Queue.Queue(10)
+
+    driver.init()
+    ngpus = driver.Device.count()
+    exitFlag = 0
+    threads = []
+    for i in range(ngpus):
+        t = KNN_RFI_remover(i, workQueue, hist_bin_cut=30,nbins=200, maxsep=16, maxwidth=1)
+        threads.append(t)
+        t.start()
+
+    queueLock.acquire()
     for infile in files:
+        workQueue.put(infile)
+    queueLock.release()
+    try:
+        while not workQueue.empty():
+            pass
+    except KeyboardInterrupt:
+        print("Terminating at KeyboardInterrupt")
+    finally:
+        exitFlag = 1
+        for t in threads:
+            t.join()
         
-        file_dir = os.path.dirname(infile)
-        fname = infile.split('/')[-1].split('.')[0] #e.g. "20170604_172322"
-        print "########## "+ fname+" ###########"
-
-        data1 = np.loadtxt(infile)
-        data1 = injectET(data1, 1352, 500)
-        data1 = pd.DataFrame(data=data1, columns=['freq','time','ra','dec','pow'])
-        X = whiten(zip(data1['freq'], data1['time']))
-
-        flags_bool = get_flags(X, 30, 5, twoD_only=True) 
-        flags = np.where(flags_bool)[0]
-        flags_ = np.where(~flags_bool)[0]
-
-
-        data1['cluster'] = 0
-        data1['remove'] = 0
-
-        data_dense = data1.loc[flags]
-        Xd = data_dense['freq']
-
-
-        nbins = 200
-        counts, bin_edges = np.histogram(Xd, bins=nbins)
-        cluster_labels = label(counts>0)
-        for i in xrange(nbins):
-            if cluster_labels[i] > 0:
-                cur_bin = (data1['freq'] >= bin_edges[i]) & (data1['freq'] < bin_edges[i+1])
-                data1.loc[cur_bin & flags_bool, 'cluster'] = cluster_labels[i]
-        ncluster = np.amax(cluster_labels)
         
-
-        for i in xrange(1, ncluster+1):
-            cluster = data1.loc[data1['cluster'] == i]
-            loc = SkyCoord(cluster['ra'],cluster['dec'],unit='deg',frame='icrs')
-            sep = loc[0].separation(loc[:])
-            maxsep = np.amax(sep.deg)
-            print i, maxsep
-            if maxsep > 16.:
-                data1.loc[data1['cluster'] == i, 'remove'] = 1
-            elif np.amax(cluster['freq'])-np.amin(cluster['freq']) > 2:
-                data1.loc[data1['cluster'] == i, 'remove'] = 2
-            else:
-                print 'Candidate cluster {}'.format(i)
-
-
-        data_candidate = data1.loc[(data1['remove'] == 0) & (data1['cluster']>0)]
-        data_clean = data1.loc[data1['cluster']==0]
-        data1.to_csv(data_dir+fname.split('.')[0]+".knn")
-        figname = file_dir+'/'+fname+".knn.png"
-        #import IPython; IPython.embed()
-        make_plots(data1, flags, flags_, figname)
