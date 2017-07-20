@@ -19,6 +19,9 @@ import pandas as pd
 from function_utils import savitzky_golay
 from astropy.coordinates import SkyCoord
 from skimage.measure import label, regionprops
+import matplotlib
+carr = np.random.rand(256, 3); carr[0,:] = 0
+cmap = matplotlib.colors.ListedColormap(carr)
 def get_cmap(N):
         '''Returns a function that maps each index in 0, 1, ... N-1 to a distinct 
         RGB color.'''
@@ -138,7 +141,6 @@ def injectET(data1, freq_start, time_start):
         ETslope = 0.0001
         
         ETtime = ETtime_end - ETtime_start
-
         ETdata = np.zeros((ETtime,5))
 
         for i in range(ETtime):
@@ -151,7 +153,7 @@ if __name__ == "__main__":
 
     #data_dir = '/data1/SETI/SERENDIP/vishal/'
     data_dir = '/home/yunfanz/Projects/SETI/serendip/Data/'
-    fname = "20170325_092539.dbase.drfi.clean.exp_time"
+    fname = "20170604_172322.dbase.drfi.clean.exp_time"
     infile = data_dir + fname
     #infile = data_dir + "20170325_092539.dbase.drfi.clean.exp_time"
     #infile = data_dir + "20170604_172322.dbase.drfi.clean.exp_time"
@@ -171,14 +173,14 @@ if __name__ == "__main__":
     allindices, alldists, meandists, klist = KNN(X, 8, srcDims=2)
     binmax  = np.amax(meandists)/2
     counts, bins = np.histogram(meandists, range=(0, binmax), bins=100)
-    cutoff = bins[10]
+    cutoff = bins[20]
     water_flags = meandists<cutoff
     #import IPython; IPython.embed()
 
     allindices, alldists, meandists, klist = KNN(X, 8, srcDims=1)
     binmax  = np.amax(meandists)/8
     counts, bins = np.histogram(meandists, range=(0, binmax), bins=100)
-    cutoff = bins[1]
+    cutoff = bins[5]
     freq_flags = meandists<cutoff
 
     # allindices, alldists, meandists, klist = KNN(X[:,::-1], 8, srcDims=1)
@@ -203,10 +205,11 @@ if __name__ == "__main__":
     plt.figure()
     plt.scatter(data1['freq'][flags_],data1['time'][flags_],color='r',marker='.',s=2)
     plt.scatter(data1['freq'][flags],data1['time'][flags],color='b',marker='.',s=2)
-    plt.scatter(data1['freq'][cflags],data1['time'][cflags],color='g',marker='.',s=2)
+    #plt.scatter(data1['freq'][cflags],data1['time'][cflags],color='g',marker='.',s=2)
     #plt.show()
 
     #import IPython; IPython.embed()
+
 
     data1['cluster'] = 0
     data1['remove'] = 0
@@ -214,6 +217,7 @@ if __name__ == "__main__":
     
     #data_dense.to_csv(data_dir+fname.split('.')[0]+".flagged")
     #Xd = whiten(zip(data_dense['freq'], data_dense['time']))
+    data_dense = data1.loc[flags]
     Xd = data1.loc[flags, 'freq']
 
     if False:
@@ -225,18 +229,61 @@ if __name__ == "__main__":
         data_dense['cluster'] = kmeans_.labels_ + 1
         #data1.set_value('cluster', np.where(flags)[0], kmeans_.labels_)
         data1.loc[flags, 'cluster'] = kmeans_.labels_ + 1
-    else:
-        nbins = 100
+    elif True:
+        #TODO use hist2D
+        nbins = 200
         counts, bin_edges = np.histogram(Xd, bins=nbins)
-        cluster_labels = label(counts>10)
+        cluster_labels = label(counts>0)
         for i in xrange(nbins):
             if cluster_labels[i] > 0:
-                cur_bin = (data1['freq']>= bin_edges[i]) & (data1['freq'] < bin_edges[i+1])
-                data1.loc[cur_bin, 'cluster'] = cluster_labels[i]
+                cur_bin = (data1['freq'] >= bin_edges[i]) & (data1['freq'] < bin_edges[i+1])
+                data1.loc[cur_bin & (water_flags | freq_flags), 'cluster'] = cluster_labels[i]
         ncluster = np.amax(cluster_labels)
         #import IPython; IPython.embed()
+    else:
+        nbins = (50,50)
+        counts, freq_edges, time_edges = np.histogram2d(data_dense['freq'], data_dense['time'], bins=nbins)
+        cluster_labels = label(counts>0)
+        plt.subplot(121)
+        plt.imshow(cluster_labels.T, cmap=cmap)
+        for i in xrange(nbins[0]):
+            column = np.unique(cluster_labels[i])
+            column = np.sort(column)
+            if column.size <= 2: continue
+            column = column[1:]
+            print column
+            fcur_bin = (data_dense['freq'] >= freq_edges[i]) & (data_dense['freq'] < freq_edges[i+1])
+            freq_peaks = {}
+            for cluster in column:
+                time_ind = np.argwhere(cluster_labels[i][:]==cluster)
+                start = np.amin(time_ind)
+                end = np.amax(time_ind)
+                tcur_bin = (data_dense['time'] >= time_edges[start]) & (data_dense['time'] < time_edges[end])
+                tempcount, temp_bins = np.histogram(data_dense.loc[tcur_bin, 'freq'], bins=5)
+                peak_loc = np.argmax(tempcount)
+                #peak_loc = np.mean(data_dense.loc[tcur_bin, 'freq'])
+                freq_peaks[peak_loc] = freq_peaks.get(peak_loc,[]) + [cluster]
+            for ploc in freq_peaks.keys():
+                example_ind = np.amin(freq_peaks[ploc])
+                for c in freq_peaks[ploc]:
+                    cluster_labels = np.where(cluster_labels==c, example_ind, cluster_labels)
+        for i, c in enumerate(np.unique(cluster_labels)):
+            cluster_labels = np.where(cluster_labels==c, i, cluster_labels)
 
-    
+        plt.subplot(122)
+        plt.imshow(cluster_labels.T, cmap=cmap)
+
+        #import IPython; IPython.embed()
+        ncluster = np.amax(cluster_labels)
+        for i in xrange(nbins[0]):
+            fcur_bin = (data1['freq'] >= freq_edges[i]) & (data1['freq'] < freq_edges[i+1])
+            for j in xrange(nbins[1]):
+                if cluster_labels[i,j] == 0:
+                    continue
+                tcur_bin = (data1['time'] >= time_edges[j]) & (data1['time'] < time_edges[j+1])
+                cur_bin = tcur_bin & fcur_bin
+                data1.loc[cur_bin,'cluster'] = cluster_labels[i,j]
+                #data1.loc[cur_bin,'cluster'] = cluster_labels[i,j]
 
     print "generating pairplot"
     #plt.figure()
@@ -249,6 +296,7 @@ if __name__ == "__main__":
     #import IPython; IPython.embed()
     for i in xrange(1, ncluster+1):
         cluster = data1.loc[data1['cluster'] == i]
+        #import IPython; IPython.embed()
         loc = SkyCoord(cluster['ra'],cluster['dec'],unit='deg',frame='icrs')
         sep = loc[0].separation(loc[:])
         maxsep = np.amax(sep.deg)
@@ -269,7 +317,7 @@ if __name__ == "__main__":
     plt.figure()
     plt.scatter(data_clean['freq'],data_clean['time'],color='r',marker='.',s=2)
     plt.scatter(data_candidate['freq'],data_candidate['time'],color='g',marker='.',s=2)
-    plt.scatter(data_broad['freq'],data_broad['time'],color='b',marker='.',s=2)
+    #plt.scatter(data_broad['freq'],data_broad['time'],color='b',marker='.',s=2)
     plt.show()
 
 
