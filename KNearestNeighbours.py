@@ -17,7 +17,7 @@ import time
 from numpy import array,zeros,amax,amin,sqrt,dot,random
 import numpy
 from numpy.linalg import eig
-#import pycuda.autoinit
+import pycuda.autoinit
 import pycuda.driver as drv
 from pycuda.compiler import SourceModule
 import math

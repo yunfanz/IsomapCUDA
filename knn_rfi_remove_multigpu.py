@@ -120,10 +120,7 @@ def get_flags(X, bin_val=30, freqbin_val=10, twoD_only=True):
 
         return flags
 
-def make_plots(data1, flags, flags_, figname):
-    data_candidate = data1.loc[(data1['remove'] == 0) & (data1['cluster']>0)]
-    data_clean = data1.loc[data1['cluster']==0]
-    #data_broad = data1.loc[data1['remove']==2]
+def make_plots(data, flags, flags_, figname):
 
     f, axes = plt.subplots(1,2, figsize=(16, 8))
     axes[0].scatter(data1['freq'][flags_],data1['time'][flags_],color='r',marker='.',s=2)
@@ -153,7 +150,7 @@ def process(queue, hist_bin_cut=30, nbins=200, maxsep=16, maxwidth=1):
     print "########## "+ fname+" ###########"
 
     data1 = np.loadtxt(infile)
-    if False:
+    if True:
         data1 = injectET(data1, 1352, 500)
     data1 = pd.DataFrame(data=data1, columns=['freq','time','ra','dec','pow'])
     X = whiten(zip(data1['freq'], data1['time']))
@@ -178,12 +175,9 @@ def process(queue, hist_bin_cut=30, nbins=200, maxsep=16, maxwidth=1):
             cur_bin = (data1['freq'] >= bin_edges[i]) & (data1['freq'] < bin_edges[i+1])
             data1.loc[cur_bin & flags_bool, 'cluster'] = cluster_labels[i]
     ncluster = np.amax(cluster_labels)
-    #print np.unique(data1['cluster'])
     
 
-    for i in np.unique(data1['cluster']):
-        if i == 0:
-            continue
+    for i in xrange(1, ncluster+1):
         cluster = data1.loc[data1['cluster'] == i]
         loc = SkyCoord(cluster['ra'],cluster['dec'],unit='deg',frame='icrs')
         sep = loc[0].separation(loc[:])
@@ -204,6 +198,40 @@ def process(queue, hist_bin_cut=30, nbins=200, maxsep=16, maxwidth=1):
     #import IPython; IPython.embed()
     make_plots(data1, flags, flags_, figname)
 
+def process_queue(queue, hist_bin_cut=30, nbins=200, maxsep=16, maxwidth=1):
+    while not exitFlag:
+        queueLock.acquire()
+        if not workQueue.empty():
+            infile = queue.get()
+            queueLock.release()
+            process(infile, hist_bin_cut=hist_bin_cut,
+                            nbins=nbins,
+                            maxsep=maxsep,
+                            maxwidth=maxwidth)
+        else:
+            queueLock.release()
+
+
+class KNN_RFI_remover(threading.Thread):
+    def __init__(self, gpuid, queue, hist_bin_cut=30,nbins=200, maxsep=16, maxwidth=1):
+        threading.Thread.__init__(self)
+        #self.ctx  = driver.Device(gpuid).make_context()
+        #self.device = self.ctx.get_device()
+        self.device = driver.Device(gpuid)
+        self.ctx = self.device.make_context()
+        self.queue = queue
+        self.cut = hist_bin_cut
+        self.nbins = nbins
+        self.maxsep = maxsep
+        self.maxwidth = maxwidth
+
+    def run(self):
+        process_queue(self.queue, self.cut, self.nbins, self.maxsep, self.maxwidth)
+
+    def join(self):
+        self.ctx.detach()
+        del self.ctx
+        threading.Thread.join(self)
 
 if __name__ == "__main__":
 
@@ -214,9 +242,30 @@ if __name__ == "__main__":
     print "Process files in " + data_dir
     files = find_files(data_dir, pattern='*.dbase.drfi.clean.exp_time')
 
+    queueLock = threading.Lock()
+    workQueue = Queue.Queue(10)
 
+    driver.init()
+    ngpus = driver.Device.count()
+    exitFlag = 0
+    threads = []
+    for i in range(ngpus):
+        t = KNN_RFI_remover(i, workQueue, hist_bin_cut=30,nbins=200, maxsep=16, maxwidth=1)
+        threads.append(t)
+        t.start()
+
+    queueLock.acquire()
     for infile in files:
-        process(infile)
-    
+        workQueue.put(infile)
+    queueLock.release()
+    try:
+        while not workQueue.empty():
+            pass
+    except KeyboardInterrupt:
+        print("Terminating at KeyboardInterrupt")
+    finally:
+        exitFlag = 1
+        for t in threads:
+            t.join()
         
         
